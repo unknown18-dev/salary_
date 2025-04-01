@@ -1,110 +1,115 @@
+import datetime
 import tkinter as tk
-from tkinter import messagebox, simpledialog
-from tkinter import font
-from PIL import Image, ImageTk
+from tkinter import messagebox, scrolledtext, simpledialog
 
-# Create the root window
-root = tk.Tk()
-root.title("Employment Salary Sorter")
-root.geometry("600x650")
-root.configure(bg="#f5f6fa")  # Light gray background for content
+def get_employees_next_weekday(weekday: int, start_date: datetime.date):
+    days_ahead = weekday - start_date.weekday()
+    if days_ahead < 0:
+        days_ahead += 7
+    return start_date + datetime.timedelta(days=days_ahead)
 
-# Salary data list to store employee details
-employees = []
+def calculate_monthly_salary(employee, month_year):
+    start_date = datetime.date(month_year[0], month_year[1], 1)
+    end_date = datetime.date(month_year[0], month_year[1] + 1, 1) - datetime.timedelta(days=1)
+    
+    total_payments = 0
+    payment_dates = []
+    
+    for weekday in employee["payment_days"]:
+        current_date = start_date
+        while current_date <= end_date:
+            next_payment_date = get_employees_next_weekday(weekday, current_date)
+            if next_payment_date > end_date:
+                break
+            total_payments += 1
+            payment_dates.append(next_payment_date)
+            current_date = next_payment_date + datetime.timedelta(days=7)
+    
+    total_salary = total_payments * employee['salary']
+    return total_salary, total_payments, payment_dates
 
-# Professional color scheme
-primary_color = "#2C3E50"  # Dark blue
-secondary_color = "#3498db"  # Light blue
-highlight_color = "#1abc9c"  # Teal for highlights
+def edit_employee():
+    global employees
+    name = simpledialog.askstring("Edit Employee", "Enter Employee Name:")
+    for employee in employees:
+        if employee["name"].upper() == name.upper():
+            new_salary = simpledialog.askinteger("Edit Salary", f"Enter new salary for {name}:")
+            if new_salary:
+                employee["salary"] = new_salary
+                messagebox.showinfo("Success", f"Updated {name}'s salary to R{new_salary}")
+            return
+    messagebox.showerror("Error", "Employee not found!")
 
-# Font style (modern)
-header_font = font.Font(family="Helvetica", size=24, weight="bold")
-button_font = font.Font(family="Helvetica", size=14)
+def add_employee():
+    global employees
+    name = simpledialog.askstring("New Employee", "Enter Employee Name:")
+    salary = simpledialog.askinteger("New Employee", "Enter Salary:")
+    payment_days = simpledialog.askstring("New Employee", "Enter Payment Days (comma-separated, 0=Monday ... 6=Sunday):")
+    
+    if name and salary and payment_days:
+        try:
+            payment_days = list(map(int, payment_days.split(",")))
+            employees.append({"name": name, "salary": salary, "payment_date": "", "payment_days": payment_days})
+            messagebox.showinfo("Success", f"Added new employee: {name} with salary R{salary}")
+        except ValueError:
+            messagebox.showerror("Error", "Invalid payment days format! Use numbers 0-6 separated by commas.")
 
-# Function to display the employee list
-def display_employees():
-    for widget in employee_frame.winfo_children():
-        widget.destroy()  # Clear the existing list before displaying updated one
+def display_salaries():
+    month_input = entry_month.get()
+    try:
+        month_year = datetime.datetime.strptime(month_input, "%b-%y").date()
+        month_year_tuple = (month_year.year, month_year.month)
+    except ValueError:
+        messagebox.showerror("Error", "Invalid Date Format! Use MMM-YY (e.g., Mar-25)")
+        return
+    
+    report_text.delete(1.0, tk.END)
+    report_text.insert(tk.END, f"=== Salary Report for {month_input} ===\n\n")
     
     for employee in employees:
-        employee_label = tk.Label(employee_frame, text=f"{employee['name']} - ${employee['salary']} - {employee['days_worked']} days",
-                                  font=("Helvetica", 12), bg=secondary_color, fg="white", anchor="w", padx=10, pady=5)
-        employee_label.pack(fill="x", pady=3)
+        total_salary, total_payments, payment_dates = calculate_monthly_salary(employee, month_year_tuple)
+        payment_dates.sort()
+        formatted_dates = "\n  - " + "\n  - ".join([date.strftime('%A, %d %B %Y') for date in payment_dates])
+        
+        report_text.insert(tk.END, f"{employee['name']}\n")
+        report_text.insert(tk.END, f"  Total Salary: R{total_salary:.2f}\n")
+        report_text.insert(tk.END, f"  Number of Payments: {total_payments}\n")
+        report_text.insert(tk.END, f"  Payment Dates:{formatted_dates}\n\n")
 
-# Function to add a new employee
-def add_employee():
-    name = simpledialog.askstring("Name", "Enter the employee's name:")
-    if not name:
-        return
-    salary = simpledialog.askfloat("Salary", "Enter the employee's salary:")
-    if salary is None:
-        return
-    days_worked = simpledialog.askinteger("Days Worked", "Enter the number of days worked:")
-    if days_worked is None:
-        return
-    
-    employees.append({"name": name, "salary": salary, "days_worked": days_worked})
-    display_employees()
+employees = [
+    {"name": "PAT", "salary": 350, "payment_date": "2025-03-31", "payment_days": [0, 5]},
+    {"name": "POL", "salary": 350, "payment_date": "2025-03-31", "payment_days": [5]},
+    {"name": "WB", "salary": 350, "payment_date": "2025-03-31", "payment_days": [4]},
+    {"name": "MAJ", "salary": 300, "payment_date": "2025-03-31", "payment_days": [2]},
+    {"name": "NEW", "salary": 350, "payment_date": "2025-03-31", "payment_days": [0, 2, 4]},
+    {"name": "GR", "salary": 300, "payment_date": "2025-02-28", "payment_days": [0, 1, 2, 3, 4]},
+]
 
-# Function to sort employees by salary
-def sort_by_salary():
-    if not employees:
-        messagebox.showwarning("No Data", "No employee data available to sort.")
-        return
+# UI Setup
+root = tk.Tk()
+root.title("BetterSalary - Salary Sorter")
+root.geometry("600x500")
+root.configure(bg="#f4f4f4")
 
-    employees.sort(key=lambda x: x['salary'], reverse=True)
-    display_employees()
+title_label = tk.Label(root, text="BetterSalary V1.0", font=("Arial", 16, "bold"), bg="#f4f4f4")
+title_label.pack(pady=10)
 
-# Function to sort employees by name
-def sort_by_name():
-    if not employees:
-        messagebox.showwarning("No Data", "No employee data available to sort.")
-        return
+entry_label = tk.Label(root, text="Enter Month (MMM-YY):", font=("Arial", 12), bg="#f4f4f4")
+entry_label.pack()
 
-    employees.sort(key=lambda x: x['name'])
-    display_employees()
+entry_month = tk.Entry(root, font=("Arial", 12))
+entry_month.pack(pady=5)
 
-# Function to load icons with error handling
-def load_icon(icon_path):
-    try:
-        icon = Image.open(icon_path).resize((30, 30))  # Resize for better visibility
-        return ImageTk.PhotoImage(icon)
-    except FileNotFoundError:
-        print(f"Icon file {icon_path} not found!")
-        return None
+process_button = tk.Button(root, text="Generate Report", font=("Arial", 12), bg="#007BFF", fg="white", command=display_salaries)
+process_button.pack(pady=10)
 
-# Frame to hold the employee list
-employee_frame = tk.Frame(root, bg="#f5f6fa", padx=20, pady=20)
-employee_frame.pack(pady=30, fill="both", expand=True)
+edit_button = tk.Button(root, text="Edit Employee", font=("Arial", 12), bg="#28A745", fg="white", command=edit_employee)
+edit_button.pack(pady=5)
 
-# Create a frame for the header with the title
-header_frame = tk.Frame(root, bg=primary_color, height=80)
-header_frame.pack(fill="x", side="top")
+add_button = tk.Button(root, text="Add Employee", font=("Arial", 12), bg="#17A2B8", fg="white", command=add_employee)
+add_button.pack(pady=5)
 
-logo_label = tk.Label(header_frame, text="Employment Salary Sorter", font=header_font, fg="white", bg=primary_color)
-logo_label.pack(pady=20)
-
-# Load the icons (Make sure to use the correct path to your image files)
-salary_icon = load_icon("icons/salary_icon.png")  # Path to the salary sorting icon
-name_icon = load_icon("icons/name_icon.png")  # Path to the name sorting icon
-add_icon = load_icon("icons/add_icon.png")  # Path to the add icon
-
-# Add buttons for different actions with enhanced styling
-button_style = {"font": button_font, "bg": secondary_color, "fg": "white", "relief": "raised", "bd": 2, "activebackground": highlight_color}
-
-# Add Employee Button
-add_button = tk.Button(root, text="Add Employee", command=add_employee, image=add_icon, compound="left", **button_style)
-add_button.pack(pady=10, fill="x")
-
-# Sort by Salary Button with Icon
-salary_button = tk.Button(root, text="Sort by Salary", command=sort_by_salary, image=salary_icon, compound="left", **button_style)
-salary_button.pack(pady=10, fill="x")
-
-# Sort by Name Button with Icon
-name_button = tk.Button(root, text="Sort by Name", command=sort_by_name, image=name_icon, compound="left", **button_style)
-name_button.pack(pady=10, fill="x")
-
-# Display the employee list initially
-display_employees()
+report_text = scrolledtext.ScrolledText(root, wrap=tk.WORD, font=("Arial", 10), height=15, width=70)
+report_text.pack(pady=10)
 
 root.mainloop()
